@@ -1,9 +1,18 @@
 #include <iostream>
+#include <chrono>
+#include <thread>
 
-#include <boost/thread/thread.hpp>
+#include <libfreenect2/libfreenect2.hpp>
+#include <libfreenect2/frame_listener_impl.h>
+#include <libfreenect2/registration.h>
+#include <libfreenect2/packet_pipeline.h>
+#include <libfreenect2/logger.h>
+
 #include <pcl/common/common_headers.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/visualization/pcl_visualizer.h>
+
+using std::shared_ptr;
 
 void
 writePointCloud (const std::string &fileName, pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud)
@@ -12,10 +21,10 @@ writePointCloud (const std::string &fileName, pcl::PointCloud<pcl::PointXYZRGB>:
 }
 
 
-boost::shared_ptr<pcl::visualization::PCLVisualizer>
+std::shared_ptr<pcl::visualization::PCLVisualizer>
 rgbVis (pcl::PointCloud<pcl::PointXYZRGB>::ConstPtr cloud)
 {
-  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  std::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
   viewer->setBackgroundColor (0, 0, 0);
   pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud);
   viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgb, "sample cloud");
@@ -61,7 +70,6 @@ createSampleRGBPointCloud()
 
 pcl::PointCloud<pcl::PointXYZRGB>::Ptr
 convertFreenectFrameToPointCloud(
-  libfreenect2::FrameMap* frames,
   libfreenect2::Registration* registration,
   libfreenect2::Frame* undistorted,
   libfreenect2::Frame* registered)
@@ -88,73 +96,36 @@ convertFreenectFrameToPointCloud(
   return cloud;
 }
 
-void
-showInPclViewerLoop(shared_ptr<Freenect2Device> dev)
+
+shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+
+void initPclViewer()
 {
-
-  libfreenect2::SyncMultiFrameListener listener(libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth);
-  libfreenect2::FrameMap frames;
-  libfreenect2::Frame undistorted(512, 424, 4), registered(512, 424, 4);
-
-  dev->setColorFrameListener(&listener);
-  dev->setIrAndDepthFrameListener(&listener);
-  dev->start();
-
-  std::cout << "device serial: " << dev->getSerialNumber() << std::endl;
-  std::cout << "device firmware: " << dev->getFirmwareVersion() << std::endl;
-
-  libfreenect2::Registration* registration = new libfreenect2::Registration(dev->getIrCameraParams(), dev->getColorCameraParams());
-
-  // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
-  viewer->setBackgroundColor (0, 0, 0);
-  viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
-  viewer->addCoordinateSystem (1.0);
-  viewer->initCameraParameters ();
-
-  // pcl::PointCloud<pcl::PointXYZRGB>::Ptr point_cloud_ptr = createSampleRGBPointCloud();
-
-  // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-  while(!viewer->wasStopped())
-  {
-    listener.waitForNewFrame(frames);
-    libfreenect2::Frame *rgb = frames[libfreenect2::Frame::Color];
-    libfreenect2::Frame *ir = frames[libfreenect2::Frame::Ir];
-    libfreenect2::Frame *depth = frames[libfreenect2::Frame::Depth];
-    registration->apply(rgb, depth, &undistorted, &registered);
-
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = convertFreenectFrameToPointCloud(&frames, registration, &undistorted, &registered);
-
-    viewer->removePointCloud("kinect");
-    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgbField(cloud);
-    viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgbField, "kinect");
-
-    // pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud);
-    // viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgb, "sample cloud");
-
-    viewer->spinOnce(100);
-    boost::this_thread::sleep (boost::posix_time::microseconds (100000));
-
-    listener.release(frames);
-  }
-  stopFreenectDev(dev);
-  delete registration;
+   viewer = shared_ptr<pcl::visualization::PCLVisualizer>(new pcl::visualization::PCLVisualizer ("3D Viewer"));
+   viewer->setBackgroundColor (0, 0, 0);
+   viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+   viewer->addCoordinateSystem (1.0);
+   viewer->initCameraParameters();
 }
 
-
-// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-int main(int argc, char *argv[])
+bool
+renderWithPclViewer(
+  libfreenect2::Frame* rgb,
+  libfreenect2::Frame* ir, 
+  libfreenect2::Frame* depth,
+  libfreenect2::Registration* registration,
+  libfreenect2::Frame *undistorted, 
+  libfreenect2::Frame *registered)
 {
-  libfreenect2::setGlobalLogger(libfreenect2::createConsoleLogger(libfreenect2::Logger::Debug));
-  libfreenect2::Freenect2 freenect2;
-  auto dev = createFreenectDev(freenect2);
-  if (dev == 0) { std::cout << "no device connected!" << std::endl; return -1; }
-  // showInOpencvLoop(dev);
 
-  showInPclViewerLoop(dev);
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = convertFreenectFrameToPointCloud(registration, undistorted, registered);
 
-  return 0;
+  viewer->removePointCloud("kinect");
+  pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgbField(cloud);
+  viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgbField, "kinect");
+
+  viewer->spinOnce(100);
+  std::this_thread::sleep_for(std::chrono::microseconds(2000));
+
+  return viewer->wasStopped();
 }

@@ -5,6 +5,10 @@
 
 #include "opencv.hpp"
 
+// #include <chrono>
+// std::chrono::system_clock cock;
+// std::chrono::system_clock::time_point lastTime = cock.now();
+
 
 bool renderWithOpencv(
   libfreenect2::Frame* rgb,
@@ -14,6 +18,12 @@ bool renderWithOpencv(
   libfreenect2::Frame *undistorted,
   libfreenect2::Frame *registered)
 {
+  // std::chrono::system_clock::time_point now = cock.now();
+  // std::chrono::milliseconds duration =
+  //   std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime);
+  // lastTime = now;
+  // std::cout << duration.count() << std::endl;
+
   cv::Mat rgbMat(rgb->height, rgb->width, CV_8UC4, rgb->data);
   resize(rgbMat, rgbMat, cv::Size(), 0.5, 0.5);
 

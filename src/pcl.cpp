@@ -68,13 +68,14 @@ createSampleRGBPointCloud()
   return point_cloud_ptr;
 }
 
-pcl::PointCloud<pcl::PointXYZRGB>::Ptr
+void
 convertFreenectFrameToPointCloud(
   libfreenect2::Registration* registration,
   libfreenect2::Frame* undistorted,
-  libfreenect2::Frame* registered)
+  libfreenect2::Frame* registered,
+  pcl::PointCloud<pcl::PointXYZRGB>::Ptr &cloud)
 {
-  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+  cloud->clear();
   float x, y, z, rgb;
 
   for (int c = 0; c < 512; c++)
@@ -92,12 +93,11 @@ convertFreenectFrameToPointCloud(
       cloud->points.push_back (point);
     }
   }
-
-  return cloud;
 }
 
 
 shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
 
 void initPclViewer()
 {
@@ -106,7 +106,16 @@ void initPclViewer()
    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
    viewer->addCoordinateSystem (1.0);
    viewer->initCameraParameters();
+   pcl::PointCloud<pcl::PointXYZRGB> pCloud;
+   cloud = pCloud.makeShared();
 }
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+// std::chrono::system_clock cock;
+// std::chrono::system_clock::time_point lastTime = cock.now();
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 bool
 renderWithPclViewer(
@@ -118,14 +127,21 @@ renderWithPclViewer(
   libfreenect2::Frame *registered)
 {
 
-  pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = convertFreenectFrameToPointCloud(registration, undistorted, registered);
+  // std::chrono::system_clock::time_point now = cock.now();
+  // std::chrono::milliseconds duration =
+  //   std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTime);
+  // lastTime = now;
+  
+  // std::cout << duration.count() << std::endl;
+
+  convertFreenectFrameToPointCloud(registration, undistorted, registered, cloud);
 
   viewer->removePointCloud("kinect");
   pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgbField(cloud);
   viewer->addPointCloud<pcl::PointXYZRGB> (cloud, rgbField, "kinect");
 
   viewer->spinOnce(100);
-  std::this_thread::sleep_for(std::chrono::microseconds(2000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
   return viewer->wasStopped();
 }
